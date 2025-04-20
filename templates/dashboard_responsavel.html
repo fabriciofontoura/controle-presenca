@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Responsável - Controle de Presença</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('index') }}">Controle de Presença</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="{{ url_for('dashboard_responsavel') }}">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('logout') }}">Sair</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-info alert-dismissible fade show">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <div class="card mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h4 class="mb-0">Dashboard do Responsável</h4>
+                    </div>
+                    <div class="card-body">
+                        <h5>Bem-vindo(a), {{ current_user.nome }}!</h5>
+                        <p>Aqui você pode gerenciar os agendamentos dos alunos e validar suas presenças.</p>
+                    </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-header bg-warning text-dark">
+                        <h4 class="mb-0">Agendamentos Pendentes</h4>
+                    </div>
+                    <div class="card-body">
+                        {% if agendamentos_pendentes %}
+                            <div class="alert alert-info">
+                                <strong>Atenção!</strong> Você tem {{ agendamentos_pendentes|length }} agendamento(s) pendente(s) para aprovação.
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Aluno</th>
+                                            <th>Data</th>
+                                            <th>Horário</th>
+                                            <th>Duração</th>
+                                            <th>Observações</th>
+                                            <th>Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for agendamento in agendamentos_pendentes %}
+                                            <tr class="agendamento-row" data-status="pendente" data-aluno-id="{{ agendamento.usuario.id }}" data-data="{{ agendamento.data.strftime('%Y-%m-%d') }}">
+                                                <td>{{ agendamento.usuario.nome }}</td>
+                                                <td>{{ agendamento.data.strftime('%d/%m/%Y') }}</td>
+                                                <td>{{ agendamento.hora_inicio.strftime('%H:%M') }} - {{ agendamento.hora_fim.strftime('%H:%M') }}</td>
+                                                <td>
+                                                    {% set inicio = agendamento.hora_inicio.strftime('%H:%M')|string %}
+                                                    {% set fim = agendamento.hora_fim.strftime('%H:%M')|string %}
+                                                    {% set h_inicio = inicio.split(':')[0]|int %}
+                                                    {% set m_inicio = inicio.split(':')[1]|int %}
+                                                    {% set h_fim = fim.split(':')[0]|int %}
+                                                    {% set m_fim = fim.split(':')[1]|int %}
+                                                    {% set duracao_min = (h_fim * 60 + m_fim) - (h_inicio * 60 + m_inicio) %}
+                                                    {% set duracao_h = (duracao_min / 60)|round(1) %}
+                                                    {{ duracao_h }} horas
+                                                </td>
+                                                <td>{{ agendamento.observacoes or '-' }}</td>
+                                                <td>
+                                                    <div class="btn-group" role="group">
+                                                        <a href="{{ url_for('aprovar_agendamento', id=agendamento.id) }}" class="btn btn-success btn-sm btn-aprovar">Aprovar</a>
+                                                        <a href="{{ url_for('rejeitar_agendamento', id=agendamento.id) }}" class="btn btn-danger btn-sm btn-rejeitar">Rejeitar</a>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="alert alert-info">
+                                Não há agendamentos pendentes no momento.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-header bg-success text-white">
+                        <h4 class="mb-0">Progresso dos Alunos</h4>
+                    </div>
+                    <div class="card-body">
+                        {% if alunos %}
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Aluno</th>
+                                            <th>Email</th>
+                                            <th>Horas Concluídas</th>
+                                            <th>Progresso</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for aluno in alunos %}
+                                            <tr>
+                                                <td>{{ aluno.nome }}</td>
+                                                <td>{{ aluno.email }}</td>
+                                                <td>{{ horas_por_aluno[aluno.id]|round(1) }} / 20 horas</td>
+                                                <td>
+                                                    <div class="progress">
+                                                        {% set progresso = (horas_por_aluno[aluno.id] / 20) * 100 %}
+                                                        {% if progresso > 100 %}
+                                                            {% set progresso = 100 %}
+                                                        {% endif %}
+                                                        <div class="progress-bar 
+                                                            {% if progresso >= 100 %}bg-success{% elif progresso >= 75 %}bg-success{% elif progresso >= 50 %}bg-warning{% else %}bg-danger{% endif %}" 
+                                                            role="progressbar" style="width: {{ progresso }}%;" 
+                                                            aria-valuenow="{{ horas_por_aluno[aluno.id] }}" aria-valuemin="0" aria-valuemax="20"
+                                                            data-bs-toggle="tooltip" data-bs-placement="top" 
+                                                            title="Concluído: {{ horas_por_aluno[aluno.id]|round(1) }} horas | Restante: {{ (20 - horas_por_aluno[aluno.id])|round(1) }} horas">
+                                                            {{ progresso|round }}%
+                                                        </div>
+                                                    </div>
+                                                    {% if horas_por_aluno[aluno.id] >= 20 %}
+                                                        <span class="badge bg-success mt-1">Carga horária completa</span>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="alert alert-info">
+                                Não há alunos cadastrados no sistema.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h4 class="mb-0">Todos os Agendamentos</h4>
+                    </div>
+                    <div class="card-body">
+                        {% if todos_agendamentos %}
+                            <div class="mb-4">
+                                <div class="row">
+                                    <div class="col-md-4 mb-2">
+                                        <label for="filtroStatus" class="form-label">Filtrar por Status:</label>
+                                        <select id="filtroStatus" class="form-select">
+                                            <option value="todos">Todos</option>
+                                            <option value="pendente">Pendente</option>
+                                            <option value="aprovado">Aprovado</option>
+                                            <option value="rejeitado">Rejeitado</option>
+                                            <option value="concluido">Concluído</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4 mb-2">
+                                        <label for="filtroAluno" class="form-label">Filtrar por Aluno:</label>
+                                        <select id="filtroAluno" class="form-select">
+                                            <option value="todos">Todos</option>
+                                            {% for aluno in alunos %}
+                                                <option value="{{ aluno.id }}">{{ aluno.nome }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4 mb-2">
+                                        <label for="filtroData" class="form-label">Filtrar por Data:</label>
+                                        <input type="date" id="filtroData" class="form-control" min="2025-04-15" max="2025-06-30">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Aluno</th>
+                                            <th>Data</th>
+                                            <th>Horário</th>
+                                            <th>Status</th>
+                                            <th>Observações</th>
+                                            <th>Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for agendamento in todos_agendamentos %}
+                                            <tr class="agendamento-row
+                                                {% if agendamento.status == 'aprovado' %}table-success{% endif %}
+                                                {% if agendamento.status == 'rejeitado' %}table-danger{% endif %}
+                                                {% if agendamento.status == 'concluido' %}table-primary{% endif %}
+                                            " data-status="{{ agendamento.status }}" data-aluno-id="{{ agendamento.usuario.id }}" data-data="{{ agendamento.data.strftime('%Y-%m-%d') }}">
+                                                <td>{{ agendamento.usuario.nome }}</td>
+                                                <td>{{ agendamento.data.strftime('%d/%m/%Y') }}</td>
+                                                <td>{{ agendamento.hora_inicio.strftime('%H:%M') }} - {{ agendamento.hora_fim.strftime('%H:%M') }}</td>
+                                                <td>
+                                                    {% if agendamento.status == 'pendente' %}
+                                                        <span class="badge bg-warning text-dark">Pendente</span>
+                                                    {% elif agendamento.status == 'aprovado' %}
+                                                        <span class="badge bg-success">Aprovado</span>
+                                                    {% elif agendamento.status == 'rejeitado' %}
+                                                        <span class="badge bg-danger">Rejeitado</span>
+                                                    {% elif agendamento.status == 'concluido' %}
+                                                        <span class="badge bg-primary">Concluído</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td>{{ agendamento.observacoes or '-' }}</td>
+                                                <td>
+                                                    {% if agendamento.status == 'aprovado' %}
+                                                        <a href="{{ url_for('concluir_agendamento', id=agendamento.id) }}" class="btn btn-primary btn-sm btn-concluir">Marcar como Concluído</a>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="alert alert-info">
+                                Não há agendamentos registrados no sistema.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="bg-light py-3 mt-5">
+        <div class="container text-center">
+            <p class="mb-0">&copy; 2025 Controle de Presença - Clínica de Fisioterapia</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/responsavel.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/carga_horaria.js') }}"></script>
+</body>
+</html>
